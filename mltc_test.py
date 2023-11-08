@@ -3,12 +3,13 @@ import gdal
 import ogr
 import osr
 import os
+import xarray
 
-site_bbox_filepath = "/media/jtomicek/ImageArchive/GW_MLTC_TEST/EUGW_TestSites/CZ0314123_BBox.shp"
+site_bbox_filepath = "/media/jiri/ImageArchive/GW_MLTC_TEST/testing_subset/aoi_test.shp"
 # site_bbox_filepath = "/media/jiri/ImageArchive/GW_MLTC_TEST/EUGW_TestSites/ES6110005_BBox.shp"
 
-start_date = "2020-03-01"
-end_date = "2020-03-31"
+start_date = "2018-03-01"
+end_date = "2018-03-31"
 bands_required = ["B02", "B03", "B04", "B05", "B06"]
 
 
@@ -41,7 +42,9 @@ def max_ndvi_selection(ndvi):
 
 
 # establish connection to OpenEO backend (reuse existing authentication)
-connection = openeo.connect("openeo.cloud").authenticate_oidc()
+# connection = openeo.connect("openeo.cloud").authenticate_oidc()
+connection = openeo.connect("openeo.cloud").authenticate_oidc_device()
+
 
 # get site bounds in wgs
 aoi_bounds = get_aoi_bounds_wgs(site_bbox_filepath)
@@ -87,13 +90,33 @@ rank_mask = ndvi.apply_neighborhood(
         max_ndvi_selection,
         size=[{'dimension': 'x', 'unit': 'px', 'value': 1}, {'dimension': 'y', 'unit': 'px', 'value': 1},
               {'dimension': 't', 'value': "month"}],
+        # size=[{'dimension': 'x', 'unit': 'px', 'value': 1}, {'dimension': 'y', 'unit': 'px', 'value': 1}],
         overlap=[]
     )
 
 print(rank_mask)
 
 rank_mask.filter_bbox({"west": aoi_bounds["lon_min"], "south": aoi_bounds["lat_min"], "east": aoi_bounds["lon_max"],
-                    "north": aoi_bounds["lat_max"]}).execute_batch("/media/jtomicek/ImageArchive/GW_MLTC_TEST/mask.nc")
+                    "north": aoi_bounds["lat_max"]}).execute_batch("/media/jiri/ImageArchive/GW_MLTC_TEST/mask.nc")
+
+
+
+rgb_bands = connection.load_collection(
+    "SENTINEL2_L2A",
+    temporal_extent = temporal_extent,
+    bands = ["B02", "B03","B04", "B08", "B11", "B12"],
+    max_cloud_cover=95
+)
+
+composite = rgb_bands.mask(rank_mask).aggregate_temporal_period("month","first")
+
+composite.filter_bbox({"west": aoi_bounds["lon_min"], "south": aoi_bounds["lat_min"], "east": aoi_bounds["lon_max"],
+                    "north": aoi_bounds["lat_max"]}).execute_batch("/media/jiri/ImageArchive/GW_MLTC_TEST/composite.nc")
+
+composite = xarray.open_dataset("/media/jiri/ImageArchive/GW_MLTC_TEST/composite.nc")
+print(composite)
+
+
 
 # rank_mask.download_file("/media/jtomicek/ImageArchive/GW_MLTC_TEST/mask.tif")
 
