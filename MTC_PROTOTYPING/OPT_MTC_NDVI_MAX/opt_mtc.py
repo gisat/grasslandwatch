@@ -22,9 +22,9 @@ import matplotlib
 # collections = ["LANDSAT8_L2"]
 # collections = ["LANDSAT8_L2", "SENTINEL2_L2A"]
 collections = ["SENTINEL2_L2A"]
-period = ["2020-07-01", "2020-07-31"]
-aoi_file = "/media/jiri/ImageArchive/GW_MLTC_TEST/COP4N2K_composite_examples/AT/AT3304000_BBox.shp"
-output_dir = "/media/jiri/ImageArchive/GW_MLTC_TEST/COP4N2K_composite_examples/AT/working"
+period = ["2017-12-01", "2017-12-31"]
+aoi_file = "/media/jiri/ImageArchive/GW_MLTC_TEST/COP4N2K_composite_examples/F_Grande_Brennes/vector/F_AOI.shp"
+output_dir = "/media/jiri/ImageArchive/GW_MLTC_TEST/COP4N2K_composite_examples/F_Grande_Brennes/working"
 required_bands_sorted = {"LANDSAT8_L2": ["ls_blue", "ls_green", "ls_red", "ls_nir08", "ls_swir16", "ls_swir22"],
                          "SENTINEL2_L2A": ["s2_blue", "s2_green", "s2_red", "s2_re01", "s2_re02", "s2_re03", "s2_nir08", "s2_swir16", "s2_swir22"]}
 # INPUT PARAMETERS: END
@@ -69,7 +69,7 @@ def run(collections, period, aoi_file, required_bands_sorted):
             collection_id="SENTINEL2_L2A",
             temporal_extent=period,
             bands=["SCL"],
-            max_cloud_cover=95)
+            max_cloud_cover=100)
         scl = scl.filter_bbox(spatial_extent).resample_spatial(resolution=20, method="near")
 
         # create original valid pixels mask
@@ -90,7 +90,7 @@ def run(collections, period, aoi_file, required_bands_sorted):
             collection_id = "SENTINEL2_L2A",
             temporal_extent = period,
             bands = s2_band_codes,
-            max_cloud_cover=95)
+            max_cloud_cover=100)
         s2_bands = s2_bands.filter_bbox(spatial_extent).resample_cube_spatial(target=valid_pixels_mask_dilated, method="near")
 
         # mask Sentinel-2 bands with the derived invalid pixels mask
@@ -124,7 +124,7 @@ def run(collections, period, aoi_file, required_bands_sorted):
             collection_id="LANDSAT8_L2",
             temporal_extent=period,
             bands=["BQA"],
-            max_cloud_cover=95)
+            max_cloud_cover=100)
         bqa = bqa.filter_bbox(spatial_extent)
 
         # if "SENTINEL2_L2A" in collections:
@@ -148,7 +148,7 @@ def run(collections, period, aoi_file, required_bands_sorted):
             collection_id = "LANDSAT8_L2",
             temporal_extent = period,
             bands = ls_band_codes,
-            max_cloud_cover=95)
+            max_cloud_cover=100)
         ls_bands = ls_bands.filter_bbox(spatial_extent)
 
         # mask Landsat bands with the derived invalid pixels mask

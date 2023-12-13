@@ -5,6 +5,7 @@ import io
 import requests
 import pathlib
 import json
+from openeo.processes import if_, is_nan
 
 # import panel as pn
 
@@ -14,7 +15,7 @@ import matplotlib
 
 import supportive.helper as helper
 
-period = ["2020-09-05", "2020-09-30"]
+period = ["2015-04-01", "2015-06-30"]
 aoi_file = "/media/jiri/ImageArchive/GW_MLTC_TEST/COP4N2K_composite_examples/HU_Hortobagy/vector/HU_AOI.shp"
 output_dir = "/media/jiri/ImageArchive/GW_MLTC_TEST/COP4N2K_composite_examples/HU_Hortobagy/working"
 required_bands_sorted = {"LANDSAT8_L2": ["ls_blue", "ls_green", "ls_red", "ls_nir08", "ls_swir16", "ls_swir22"],
@@ -30,19 +31,23 @@ except:
 # get AOI spatial extent
 spatial_extent = helper.get_spatial_extent_wgs(aoi_file)
 
-scl = c.load_collection(
-    "SENTINEL2_L2A",
-    spatial_extent=spatial_extent,
+# load BQA layers as datacube
+bqa = c.load_collection(
+    collection_id="LANDSAT8_L2",
     temporal_extent=period,
-    bands=["SCL"],
-    max_cloud_cover=(95) # VITO had 70
-)
+    bands=["BQA"],
+    max_cloud_cover=95)
+bqa = bqa.filter_bbox(spatial_extent)
 
-score = scl.apply_neighborhood(
+bqa = bqa.apply(lambda x: if_(is_nan(x), 0, x))
+
+score = bqa.apply_neighborhood(
     process=openeo.UDF.from_file("udf_score.py"),
     size=[{'dimension': 'x', 'unit': 'px', 'value': 256}, {'dimension': 'y', 'unit': 'px', 'value': 256}],
-    overlap=[]
+    overlap=[{'dimension': 'x', 'unit': 'px', 'value': 16}, {'dimension': 'y', 'unit': 'px', 'value': 16}]
 )
+
+score = score.rename_labels('bands', ['score'])
 
 def max_score_selection(score):
     max_score = score.max()
@@ -62,19 +67,29 @@ with open(base_dir.joinpath("supportive", "bands.json")) as bdo:
     bands_collections_available = json.load(bdo)
 
 # get list of required Sentinel-2 band codes
-s2_band_codes = [bands_collections_available["SENTINEL2_L2A"][band_name] for band_name in
-                 required_bands_sorted["SENTINEL2_L2A"]]
+ls_band_codes = [bands_collections_available["LANDSAT8_L2"][band_name] for band_name in
+                 required_bands_sorted["LANDSAT8_L2"]]
 
-s2_bands = c.load_collection(
-    "SENTINEL2_L2A",
+ls_bands = c.load_collection(
+    "LANDSAT8_L2",
     temporal_extent = period,
     spatial_extent = spatial_extent,
-    bands = s2_band_codes,
+    bands = ls_band_codes,
     max_cloud_cover=95
 )
 
-composite = s2_bands.mask(rank_mask).aggregate_temporal_period("month","first")
+# composite_ls = ls_bands.mask(rank_mask_ls).aggregate_temporal_period("month","first")
+composite_ls = ls_bands.mask(rank_mask).aggregate_temporal([
+    ["2015-01-01", "2015-03-31"],
+    ["2015-04-01", "2015-06-30"],
+    ["2015-07-01", "2015-09-30"],
+    ["2015-10-01", "2015-12-31"],
+    ["2018-01-01", "2018-03-31"],
+    ["2018-04-01", "2018-06-30"],
+    ["2018-07-01", "2018-09-30"],
+    ["2018-10-01", "2018-12-31"]],
+    "first")
 
-job = composite.execute_batch(out_format="GTiff")
+job = composite_ls.execute_batch(out_format="GTiff")
 job.get_results().download_files(output_dir)
 print("Landsat composite done")

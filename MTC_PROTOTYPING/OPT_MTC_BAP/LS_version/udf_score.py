@@ -8,24 +8,43 @@ from skimage.morphology import footprints
 from skimage.morphology import binary_erosion, binary_dilation
 from openeo.udf import XarrayDataCube
 
-
+# def reclassify_number(number):
+#     # Convert the 16-bit integer to binary representation
+#     binary_representation = np.binary_repr(number, width=16)
+#     # Check state of Bit 6 (first of two Cloud Confidence Bits)
+#     # based on https://www.usgs.gov/landsat-missions/landsat-sr-derived-spectral-indices-pixel-quality-band
+#     if binary_representation[6] == '1':
+#         return 1
+#     else:
+#         return 0
+# vectorized_reclassify_number = np.vectorize(reclassify_number)
 
 def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
 
     cube_array: xr.DataArray = cube.get_array()
     cube_array = cube_array.transpose('t', 'bands', 'y', 'x')
 
-    clouds = np.logical_or(np.logical_and(cube_array < 11, cube_array >= 8), cube_array == 3).isel(bands=0)
+    clouds = np.copy(cube_array)
+
+    # temp_array = cube_array.values.astype(np.uint16)
+    # clouds = vectorized_reclassify_number(temp_array)
+    valid_values = [21824, 21952]
+    clouds[clouds == 0] = 1
+    for valid_value in valid_values:
+        clouds[clouds == valid_value] = 0
+    clouds[clouds != 0] = 1
+
+    # clouds = np.logical_or(np.logical_and(cube_array < 11, cube_array >= 8), cube_array == 3).isel(bands=0)
 
     weights = [1, 0.8, 0.5]
 
     # Calculate the Day Of Year score
-    times = cube_array.t.dt.day.values  # returns day of the month for each date
+    times = clouds.t.dt.day.values  # returns day of the month for each date
     sigma = 5
     mu = 15
     score_doy = 1 / (sigma * math.sqrt(2 * math.pi)) * np.exp(-0.5 * ((times - mu) / sigma) ** 2)
     score_doy = np.broadcast_to(score_doy[:, np.newaxis, np.newaxis],
-                                [cube_array.sizes['t'], cube_array.sizes['y'], cube_array.sizes['x']])
+                                [clouds.sizes['t'], clouds.sizes['y'], clouds.sizes['x']])
 
     # Calculate the Distance To Cloud score
     # Erode
@@ -64,9 +83,9 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
 
     # Calculate the Coverage score
     score_cov = 1 - clouds.sum(dim='x').sum(dim='y') / (
-            cube_array.sizes['x'] * cube_array.sizes['y'])
+            clouds.sizes['x'] * clouds.sizes['y'])
     score_cov = np.broadcast_to(score_cov.values[:, np.newaxis, np.newaxis],
-                                [cube_array.sizes['t'], cube_array.sizes['y'], cube_array.sizes['x']])
+                                [clouds.sizes['t'], clouds.sizes['y'], clouds.sizes['x']])
 
     # Final score is weighted average
     score = (weights[0] * score_clouds + weights[1] * score_doy + weights[2] * score_cov) / sum(weights)
