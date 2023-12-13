@@ -7,8 +7,8 @@ import osr
 # INPUT PARAMETERS: START
 collections = ["SENTINEL2_L2A"]
 period = ["2017-12-25", "2017-12-25"]
-aoi_file = "/home/jiri/GISAT/GitHub/grasslandwatch/MTC_PROTOTYPING/test_logging_from_udf/test_aoi/AT3304000_BBox.shp"
-output_dir = "/home/jiri/GISAT/GitHub/grasslandwatch/MTC_PROTOTYPING/test_logging_from_udf/test_output"
+aoi_file = "/home/yantra/gisat/src/grasslandwatch/MTC_PROTOTYPING/test_logging_from_udf/test_aoi/AT3304000_BBox.shp"
+output_dir = "/home/yantra/gisat/src/grasslandwatch/MTC_PROTOTYPING/test_logging_from_udf/test_output"
 # INPUT PARAMETERS: END
 
 
@@ -77,6 +77,7 @@ def run(collections, period, aoi_file, output_dir):
 
         job = valid_pixels_mask_orig.execute_batch(out_format="GTiff")
         job.get_results().download_files(output_dir)
+        print(job.logs())
         print("Done")
         return
 
