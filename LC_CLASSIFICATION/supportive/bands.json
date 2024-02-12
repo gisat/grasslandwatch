@@ -1,0 +1,29 @@
+{
+  "LANDSAT8_L2":
+  {
+    "ls_coastal": "B01",
+    "ls_blue": "B02",
+    "ls_green": "B03",
+    "ls_red": "B04",
+    "ls_nir08": "B05",
+    "ls_swir16": "B06",
+    "ls_swir22": "B07",
+    "ls_lwir": "B10",
+    "ls_quality_assessment": "BQA"
+  },
+  "SENTINEL2_L2A":
+  {
+    "s2_coastal": "B01",
+    "s2_blue": "B02",
+    "s2_green": "B03",
+    "s2_red": "B04",
+    "s2_re01": "B05",
+    "s2_re02": "B06",
+    "s2_re03": "B07",
+    "s2_nir08": "B8A",
+    "s2_nir09": "B09",
+    "s2_swir16": "B11",
+    "s2_swir22": "B12",
+    "s2_scene_classification_layer": "SCL"
+  }
+}
