@@ -1,7 +1,5 @@
 
 
-
-from pathlib import Path
 import subprocess
 
 from sklearn.model_selection import train_test_split
@@ -9,6 +7,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, Con
 
 from sample_point_creation.distribute_points import create_training_point
 
+from eodatacube import create_eodatacube
 
 
 import openeo
@@ -35,11 +34,12 @@ def main():
     # creation of training polygons
     training_polygons_filepath = Path("/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data/CZ_N2K2018.gpkg")
     training_column = "CODE_1_18"
+    create_tif = False
 
     output_dir = training_polygons_filepath.parent
 
     start_date = datetime.date(2018, 1, 1)
-    end_date = datetime.date(2018, 12, 31)
+    end_date = datetime.date(2018, 1, 31)
 
 
     training_points_filepath = training_polygons_filepath.parent.joinpath("training_points2.gpkg")
@@ -67,9 +67,6 @@ def main():
     y_train, y_test = train_test_split(training_gdf, test_size=0.25, random_state=333)
     y_train = y_train[['target','geometry']]
     y_test = y_test[['target','geometry']]
-    y_train
-
-    features =  y_train.geometry.iloc[0].__geo_interface__
 
     ####### openeo connection #######
     c = openeo.connect("openeo.dataspace.copernicus.eu")
@@ -78,45 +75,29 @@ def main():
     except:
         c.authenticate_oidc_device()
 
-    ####### create openeo datacube #######
-
-    sentinel2 = c.load_collection(
-        "SENTINEL2_L2A",
-        temporal_extent=[start_date.isoformat(), end_date.isoformat()],
-        bands=["B02", "B03", "B04", "SCL"],
-        max_cloud_cover=95
-    )
-
-    sentinel2 = sentinel2.process(
-        "mask_scl_dilation",
-        data=sentinel2,
-        scl_band_name="SCL",
-        kernel1_size=17, kernel2_size=77,
-        mask1_values=[2, 4, 5, 6, 7],
-        mask2_values=[3, 8, 9, 10, 11],
-        erosion_kernel_size=3)
-
-    sentinel2 = sentinel2.aggregate_temporal_period("month", reducer="median") \
-        .apply_dimension(dimension="t", process="array_interpolate_linear")
+    ####### eodatacube #######
+    # Assuming gdf is your GeoDataFrame
+    total_bounds = training_gdf.total_bounds
+    # Convert to spatial_extent dictionary
+    spatial_extent = {
+        "west": total_bounds[0],
+        "south": total_bounds[1],
+        "east": total_bounds[2],
+        "north": total_bounds[3]}
+    eodatacube = create_eodatacube(c, spatial_extent, start_date.isoformat(), end_date.isoformat(), create_tif, output_dir)
 
     ###### Extract point #######
     # Convert GeoDataFrame to GeoJSON format
-    first_item = training_gdf.iloc[0:1]
+    first_item = y_train.iloc[0:5]
 
     # Create a new GeoDataFrame from the first item, explicitly setting the geometry column
     new_gdf = gpd.GeoDataFrame(first_item, geometry='geometry', crs=training_gdf.crs)
-
-    geojson = json.loads(new_gdf.to_json())
-
-    # Extract just the geometry part from the GeoJSON
-    geometry_geojson = geojson['features'][0]['geometry']
-
-
-    box_geojson = new_gdf.to_json()
+    training_extraction_box_filepath = training_polygons_filepath.parent.joinpath("training_extraction_boxes_4326.gpkg")
+    new_gdf.to_file(str(training_extraction_box_filepath), driver="GPKG")
 
     # Use filter_spatial with the point geometry
-    #filtered_data = sentinel2.aggregate_spatial(geometries=json.loads(box_geojson), reducer="mean")
-    filtered_data = sentinel2.aggregate_spatial(geometries=geometry_geojson, reducer="mean")
+    filtered_data = eodatacube.aggregate_spatial(json.loads(new_gdf.to_json()), reducer="mean")
+    #filtered_data = sentinel2.aggregate_spatial(geometries=geometry_geojson, reducer="mean")
 
     # Define output format options
     output_format = "NetCDF"  # This may need adjustment based on backend specifics
