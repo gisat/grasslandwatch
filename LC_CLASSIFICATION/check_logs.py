@@ -7,7 +7,7 @@ connection = (openeo.connect("openeo.dataspace.copernicus.eu"))
 connection.authenticate_oidc()
 
 # Fetch the job
-job = connection.job("j-2402106bf63845a1a06e0516650da82f")
+job = connection.job("j-24021470a2304a729a048eab37b16be3")
 
 # Get job information
 job_info = job.describe()

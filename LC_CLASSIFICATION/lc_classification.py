@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, Con
 
 from sample_point_creation.distribute_points import create_training_point
 
-from eodatacube import create_eodatacube
+from eodatacube import create_eodatacube, ndvi_eodatacube, openeo_eodatacube
 
 
 import openeo
@@ -19,6 +19,10 @@ import json
 from pathlib import Path
 import datetime
 from shapely.geometry import box, Point
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, ConfusionMatrixDisplay
+
 
 def create_square_around_point(point, size=10):
     # Calculate half the size to offset the square around the point
@@ -35,12 +39,13 @@ def main():
     training_polygons_filepath = Path("/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data/CZ_N2K2018.gpkg")
     training_column = "CODE_1_18"
     create_tif = False
+    create_table = False
 
     output_dir = training_polygons_filepath.parent
 
-    start_date = datetime.date(2018, 1, 1)
-    end_date = datetime.date(2018, 1, 31)
-
+    start_date = datetime.date(2018, 5, 1)
+    end_date = datetime.date(2018, 5, 31)
+    buffer_size = 0.0005
 
     training_points_filepath = training_polygons_filepath.parent.joinpath("training_points2.gpkg")
     training_box_filepath = training_polygons_filepath.parent.joinpath("training_points2_box.gpkg")
@@ -75,17 +80,6 @@ def main():
     except:
         c.authenticate_oidc_device()
 
-    ####### eodatacube #######
-    # Assuming gdf is your GeoDataFrame
-    total_bounds = training_gdf.total_bounds
-    # Convert to spatial_extent dictionary
-    spatial_extent = {
-        "west": total_bounds[0],
-        "south": total_bounds[1],
-        "east": total_bounds[2],
-        "north": total_bounds[3]}
-    eodatacube = create_eodatacube(c, spatial_extent, start_date.isoformat(), end_date.isoformat(), create_tif, output_dir)
-
     ###### Extract point #######
     # Convert GeoDataFrame to GeoJSON format
     first_item = y_train.iloc[0:5]
@@ -95,27 +89,77 @@ def main():
     training_extraction_box_filepath = training_polygons_filepath.parent.joinpath("training_extraction_boxes_4326.gpkg")
     new_gdf.to_file(str(training_extraction_box_filepath), driver="GPKG")
 
+
+
+    ####### eodatacube #######
+    # Assuming gdf is your GeoDataFrame
+    total_bounds = new_gdf.total_bounds
+    # Convert to spatial_extent dictionary
+    spatial_extent = {
+        "west": total_bounds[0] - buffer_size,
+        "south": total_bounds[1]- buffer_size,
+        "east": total_bounds[2] + buffer_size,
+        "north": total_bounds[3] + buffer_size, "crs": "epsg:4326"}
+    eodatacube = openeo_eodatacube(c, spatial_extent, start_date.isoformat(), end_date.isoformat(), create_tif, output_dir)
+
+
     # Use filter_spatial with the point geometry
-    filtered_data = eodatacube.aggregate_spatial(json.loads(new_gdf.to_json()), reducer="mean")
+    filtered_data = eodatacube.aggregate_spatial(geometries=json.loads(first_item.to_json()), reducer="mean")
     #filtered_data = sentinel2.aggregate_spatial(geometries=geometry_geojson, reducer="mean")
 
-    # Define output format options
-    output_format = "NetCDF"  # This may need adjustment based on backend specifics
-    output_params = {
-        "format": output_format
-    }
 
-    # Replace the execute_batch call to use NetCDF format
-    job = filtered_data.execute_batch(
-        outputfile="result.nc",  # Specify .nc extension for NetCDF
-        title="Sentinel composite for Point",
-        output_format=output_params,
-        filename_prefix="point_analysis"
-    )
 
-    # Download the results
-    job.get_results().download_files(output_dir)
+    if create_table:
+        # Define output format options
+        output_format = "NetCDF"  # This may need adjustment based on backend specifics
+        output_params = {
+            "format": output_format
+        }
 
+        # Replace the execute_batch call to use NetCDF format
+        job = filtered_data.execute_batch(
+            outputfile="result.nc",  # Specify .nc extension for NetCDF
+            title="Sentinel composite for Point",
+            output_format=output_params,
+            filename_prefix="point_analysis"
+        )
+
+        # Download the results
+        job.get_results().download_files(output_dir)
+
+    ml_model = filtered_data.fit_class_random_forest(target=json.loads(y_train.to_json()), num_trees=200)
+    model = ml_model.save_ml_model()
+
+    training_job = model.create_job()
+    training_job.start_and_wait()
+
+
+    ###### validation #######
+    validation_path = training_polygons_filepath.parent.joinpath("validation")
+    validation_path.mkdir(parents=True, exist_ok=True)
+
+    y_test.to_file(filename=str(validation_path.joinpath('y_test.geojson')), driver="GeoJSON")
+    cube = filtered_data
+    predicted = cube.predict_random_forest(model=training_job, dimension="bands").linear_scale_range(0, 255, 0,
+                                                                                                     255).aggregate_spatial(
+        json.loads(y_test.to_json()),
+        reducer="mean")  # "https://github.com/openEOPlatform/sample-notebooks/raw/main/resources/landcover/model_item.json"
+    test_job = predicted.execute_batch(out_format="CSV")
+    test_job.get_results().download_files(str(validation_path))
+
+    validation_timeseries_csv = validation_path.joinpath("timeseries.csv")
+    df = pd.read_csv(str(validation_timeseries_csv))
+    df.index = df.feature_index
+    df = df.sort_index()
+    df.columns = ["feature_index","predicted"]
+
+    validation_ytest_geojson = validation_path.joinpath('y_test.geojson')
+    gdf = gpd.read_file(validation_ytest_geojson)
+    gdf['predicted'] = df.predicted.astype(int)
+
+    ConfusionMatrixDisplay.from_predictions(gdf["target"],gdf["predicted"])
+    print("--- Accuracy ---")
+    print(accuracy_score(gdf["target"],gdf["predicted"]))
 
 
 if __name__ == "__main__":
