@@ -1,0 +1,15 @@
+name: lcmap-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - openeo
+    - geopandas
+    - pandas
+    - geojson
+    - shapely
+    - scikit-learn
+    - jupyter
+    - git+https://github.com/Open-EO/openeo-gfmap.git
