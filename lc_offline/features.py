@@ -49,14 +49,13 @@ def get_s2_features(
 ) -> openeo.DataCube:
     # TODO compare with BAP or NDVIweighted
     s2 = s2_datacube.process("mask_scl_dilation", data=s2_datacube, scl_band_name="SCL").filter_bands(s2_datacube.metadata.band_names[:-1])
-    s2_dekad = s2.aggregate_temporal_period("dekad", reducer="mean")
 
-    indices = compute_and_rescale_indices(s2_dekad, s2_index_dict, append=False)
-    idx_stats = compute_statistics(indices)
+    indices = compute_and_rescale_indices(s2, s2_index_dict, append=False)
+    idx_dekad = indices.aggregate_temporal_period("dekad", reducer="mean")
+    idx_stats = compute_statistics(idx_dekad)
 
-    s2_montly = s2_dekad.filter_bands(s2_list).aggregate_temporal_period("month", reducer="mean")
+    s2_montly = s2.filter_bands(s2_list).aggregate_temporal_period("month", reducer="mean")
     s2_montly = s2_montly.apply_dimension(dimension="t", process="array_interpolate_linear")
-
     s2_features = timesteps_as_bands(s2_montly).merge_cubes(idx_stats)
     return s2_features
 
