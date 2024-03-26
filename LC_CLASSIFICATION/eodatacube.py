@@ -97,7 +97,7 @@ def create_eodatacube(c, spatial_extent, start_date, end_date, create_opt_tiff, 
         print("Sentinel-2 composite done")
     return composite
 
-def ndvi_eodatacube(c, spatial_extent, start_date, end_date, create_opt_tiff, output_period_dir, tif_filename = "composite"):
+def ndvi_eodatacube(c, spatial_extent, start_date, end_date, time_interval,create_opt_tiff, output_period_dir, tif_filename = "composite"):
     period = [start_date, end_date]
 
     s2cube = c.load_collection(
@@ -124,7 +124,7 @@ def ndvi_eodatacube(c, spatial_extent, start_date, end_date, create_opt_tiff, ou
     ndvi_masked = ndvi.mask(mask)
     return ndvi_masked
 
-def openeo_eodatacube(c, spatial_extent, start_date, end_date, create_opt_tiff, output_period_dir, tif_filename = "composite"):
+def openeo_eodatacube(c, spatial_extent, start_date, end_date, time_interval, create_opt_tiff, output_period_dir, tif_filename = "composite"):
 
     period = [start_date, end_date]
     # get a base directory
@@ -186,7 +186,8 @@ def openeo_eodatacube(c, spatial_extent, start_date, end_date, create_opt_tiff, 
         max_cloud_cover=95
     )
 
-    composite = rgb_bands.mask(rank_mask).aggregate_temporal_period("month","first")
+    composite = rgb_bands.mask(rank_mask).aggregate_temporal_period(time_interval, "median")
+    composite = composite.apply_dimension(dimension="t", process="array_interpolate_linear")
 
     if create_opt_tiff:
         output_parameters = {

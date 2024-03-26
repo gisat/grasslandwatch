@@ -3,8 +3,8 @@ import xarray as xr
 import pandas as pd
 
 
-netcdf_file_path = "/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data/timeseries.nc"
-csv_file_path  = "/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data/timeseries.csv"
+netcdf_file_path = "/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/result.nc"
+csv_file_path  = "/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/result_full.csv"
 
 
 
