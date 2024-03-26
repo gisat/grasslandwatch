@@ -1,13 +1,13 @@
 import openeo
 
 # Connect to openEO backend
-connection = (openeo.connect("openeo.dataspace.copernicus.eu"))
+connection = (openeo.connect("openeo.cloud"))
 
 # Authenticate if necessary
 connection.authenticate_oidc()
 
 # Fetch the job
-job = connection.job("j-2402106bf63845a1a06e0516650da82f")
+job = connection.job("j-2402194784014f68853799659443cdef")
 
 # Get job information
 job_info = job.describe()
