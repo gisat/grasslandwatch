@@ -12,4 +12,7 @@ dependencies:
     - shapely
     - scikit-learn
     - jupyter
+    - skl2onnx
+    - onnxruntime
+    - matplotlib
     - git+https://github.com/Open-EO/openeo-gfmap.git
