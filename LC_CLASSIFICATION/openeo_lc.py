@@ -13,12 +13,14 @@ from shapely.geometry import box
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, ConfusionMatrixDisplay
 
+create_table = True
+script_directory = os.path.dirname(os.path.abspath(__file__))
 
-validation_path = Path("/home/yantra/gisat/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data/openeo_val")
+validation_path = Path(script_directory).joinpath("openeo_val")
 os.makedirs(validation_path, exist_ok=True)
 
 mask = box(4.4, 50.2, 5.6, 51.2)
-y = gpd.read_file("https://artifactory.vgt.vito.be/auxdata-public/openeo/LUCAS_2018_Copernicus.gpkg",mask=mask)
+y = gpd.read_file("https://artifactory.vgt.vito.be/auxdata-public/openeo/LUCAS_2018_Copernicus.gpkg", mask=mask)
 y["geometry"] = y["geometry"].apply(lambda x: x.centroid)
 y["LC1"] = y["LC1"].apply(lambda x: ord(x[0])-65)
 y_train, y_test = train_test_split(y, test_size=0.25, random_state=333)
@@ -27,10 +29,10 @@ y_train["target"] = y_train.LC1
 y_train = y_train[['target','geometry']]
 y_test["target"] = y_test.LC1
 y_test = y_test[['target','geometry']]
-y_train
+y_train = y_train.iloc[0:5]
 
 
-c = openeo.connect("openeo.dataspace.copernicus.eu")
+c = openeo.connect("openeo.cloud")
 c.authenticate_oidc()
 
 
@@ -62,7 +64,7 @@ def sentinel2_composite(start_date, end_date, connection_provider, provider, ind
 
     indices = compute_and_rescale_indices(s2, index_dict, True).filter_bands(
         s2_list + list(index_dict["indices"].keys()))
-    idx_dekad = indices.aggregate_temporal_period("dekad", reducer="median")
+    idx_dekad = indices.aggregate_temporal_period("month", reducer="median")
 
     idx_dekad = idx_dekad.apply_dimension(dimension="t", process="array_interpolate_linear")
     return idx_dekad
@@ -100,7 +102,7 @@ def sentinel1_composite(start_date, end_date, connection_provider=connection, pr
     s1 = s1.rename_labels("bands", ["ratio"] + s1.metadata.band_names)
     # scale to int16
     s1 = s1.linear_scale_range(0, 30, 0, 30000)
-    s1_dekad = s1.aggregate_temporal_period(period="dekad", reducer="median")
+    s1_dekad = s1.aggregate_temporal_period(period="month", reducer="median")
 
     s1_dekad = s1_dekad.apply_dimension(dimension="t", process="array_interpolate_linear")
     return s1_dekad
@@ -159,43 +161,62 @@ def load_lc_features(provider, feature_raster, start_date, end_date, stepsize_s2
                                     processing_opts=processing_opts, sampling=True, stepsize=stepsize_s2, luc=True)
     idx_features = compute_statistics_fill_nan(idx_dekad, start_date, end_date, stepsize=stepsize_s2)
 
-    s1_dekad = sentinel1_composite(start_date, end_date, connection_provider, provider, processing_opts=processing_opts,
-                                   orbitDirection="ASCENDING", sampling=True, stepsize=stepsize_s1)
-    s1_features = compute_statistics_fill_nan(s1_dekad, start_date, end_date, stepsize=stepsize_s1)
+    # s1_dekad = sentinel1_composite(start_date, end_date, connection_provider, provider, processing_opts=processing_opts,
+    #                                orbitDirection="ASCENDING", sampling=True, stepsize=stepsize_s1)
+    # s1_features = compute_statistics_fill_nan(s1_dekad, start_date, end_date, stepsize=stepsize_s1)
+    #
+    # features = idx_features.merge_cubes(s1_features)
 
-    features = idx_features.merge_cubes(s1_features)
-
-    return features, features.metadata.band_names
+    return idx_features, idx_features.metadata.band_names
 
 features, feature_list = load_lc_features("terrascope", "both", datetime.date(2018, 3, 1), datetime.date(2018, 10, 31))
 X = features.aggregate_spatial(json.loads(y_train.to_json()), reducer="mean")
-ml_model = X.fit_class_random_forest(target=json.loads(y_train.to_json()), num_trees=200)
-model = ml_model.save_ml_model()
 
-training_job = model.create_job()
-training_job.start_and_wait()
+if create_table:
+    # Define output format options
+    output_format = "NetCDF"  # This may need adjustment based on backend specifics
+    output_params = {
+        "format": output_format
+    }
 
-###### validation #######
+    # Replace the execute_batch call to use NetCDF format
+    job = X.execute_batch(
+        outputfile="result.nc",  # Specify .nc extension for NetCDF
+        title="Sentinel composite for Point",
+        output_format=output_params,
+        filename_prefix="point_analysis"
+    )
 
-y_test.to_file(filename=str(validation_path.joinpath('y_test.geojson')), driver="GeoJSON")
-cube = X
-predicted = cube.predict_random_forest(model=training_job, dimension="bands").linear_scale_range(0, 255, 0,
-                                                                                                 255).aggregate_spatial(
-    json.loads(y_test.to_json()),
-    reducer="mean")  # "https://github.com/openEOPlatform/sample-notebooks/raw/main/resources/landcover/model_item.json"
-test_job = predicted.execute_batch(out_format="CSV")
-test_job.get_results().download_files(str(validation_path))
-
-validation_timeseries_csv = validation_path.joinpath("timeseries.csv")
-df = pd.read_csv(str(validation_timeseries_csv))
-df.index = df.feature_index
-df = df.sort_index()
-df.columns = ["feature_index", "predicted"]
-
-validation_ytest_geojson = validation_path.joinpath('y_test.geojson')
-gdf = gpd.read_file(validation_ytest_geojson)
-gdf['predicted'] = df.predicted.astype(int)
-
-ConfusionMatrixDisplay.from_predictions(gdf["target"], gdf["predicted"])
-print("--- Accuracy ---")
-print(accuracy_score(gdf["target"], gdf["predicted"]))
+    # Download the results
+    job.get_results().download_files(validation_path)
+#
+# ml_model = X.fit_class_random_forest(target=json.loads(y_train.to_json()), num_trees=200)
+# model = ml_model.save_ml_model()
+#
+# training_job = model.create_job()
+# training_job.start_and_wait()
+#
+# ###### validation #######
+#
+# y_test.to_file(filename=str(validation_path.joinpath('y_test.geojson')), driver="GeoJSON")
+# cube = X
+# predicted = cube.predict_random_forest(model=training_job, dimension="bands").linear_scale_range(0, 255, 0,
+#                                                                                                  255).aggregate_spatial(
+#     json.loads(y_test.to_json()),
+#     reducer="mean")  # "https://github.com/openEOPlatform/sample-notebooks/raw/main/resources/landcover/model_item.json"
+# test_job = predicted.execute_batch(out_format="CSV")
+# test_job.get_results().download_files(str(validation_path))
+#
+# validation_timeseries_csv = validation_path.joinpath("timeseries.csv")
+# df = pd.read_csv(str(validation_timeseries_csv))
+# df.index = df.feature_index
+# df = df.sort_index()
+# df.columns = ["feature_index", "predicted"]
+#
+# validation_ytest_geojson = validation_path.joinpath('y_test.geojson')
+# gdf = gpd.read_file(validation_ytest_geojson)
+# gdf['predicted'] = df.predicted.astype(int)
+#
+# ConfusionMatrixDisplay.from_predictions(gdf["target"], gdf["predicted"])
+# print("--- Accuracy ---")
+# print(accuracy_score(gdf["target"], gdf["predicted"]))
