@@ -10,10 +10,19 @@ import os
 import time
 # import panel as p
 import scipy.signal
+from pathlib import Path
 
 import pyproj
 import matplotlib.pyplot as plt
 import matplotlib
+
+from features import preprocess_features
+import pandas as pd
+import geojson
+
+from openeo_gfmap import TemporalContext, Backend, BackendContext, FetchType
+from openeo_gfmap.fetching import build_sentinel2_l2a_extractor, build_sentinel1_grd_extractor
+
 
 start = time.time()
 
@@ -198,3 +207,103 @@ def openeo_eodatacube(c, spatial_extent, start_date, end_date, time_interval, cr
         print("Sentinel-2 composite done")
 
     return composite
+
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
+def sentinel2_collection(
+        row: pd.Series,
+        connection: openeo.DataCube,
+        geometry: geojson.FeatureCollection
+) -> openeo.DataCube:
+    bands = ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B11", "B12", "SCL"]
+    bands_with_platform = ["S2-L2A-" + band for band in bands]
+
+    extraction_parameters = {
+        "load_collection": {
+            "eo:cloud_cover": lambda val: val <= 80.0,
+        },
+    }
+
+    extractor = build_sentinel2_l2a_extractor(
+        backend_context=BackendContext(Backend(row.backend_name)),
+        bands=bands_with_platform,
+        fetch_type=FetchType.POINT,
+        **extraction_parameters
+    )
+
+    temporal_context = TemporalContext(row.start_date, row.end_date)
+
+    s2 = extractor.get_cube(connection, geometry, temporal_context)
+    s2 = s2.rename_labels("bands", bands)
+    return s2
+
+
+def sentinel1_collection(
+        row: pd.Series,
+        connection: openeo.DataCube,
+        geometry: geojson.FeatureCollection,
+) -> openeo.DataCube:
+    bands = ["VH", "VV"]
+    bands_with_platform = ["S1-SIGMA0-" + band for band in bands]
+
+    extractor = build_sentinel1_grd_extractor(
+        backend_context=BackendContext(Backend(row.backend_name)),
+        bands=bands_with_platform,
+        fetch_type=FetchType.POINT,
+    )
+
+    temporal_context = TemporalContext(row.start_date, row.end_date)
+
+    s1 = extractor.get_cube(connection, geometry, temporal_context)
+    s1 = s1.rename_labels("bands", bands)
+    return s1
+
+
+def load_lc_features(
+        row: pd.Series,
+        connection: openeo.DataCube,
+        **kwargs
+):
+    geometry = geojson.loads(row.geometry)
+
+    s2_collection = sentinel2_collection(
+        row=row,
+        connection=connection,
+        geometry=geometry
+    )
+
+    s1_collection = sentinel1_collection(
+        row=row,
+        connection=connection,
+        geometry=geometry
+    )
+
+    features = preprocess_features(s2_collection, s1_collection)
+
+    # Currently, aggregate_spatial and vectorcubes do not keep the band names, so we'll need to rename them later on
+    global final_band_names
+    final_band_names = [b.name for b in features.metadata.band_dimension.bands]
+
+    script_path = Path(os.path.realpath(__file__))
+    # Extract the directory from the full path
+    base_output_path = Path(os.path.dirname(script_path)).joinpath("sample_point_creation", "sample_data")
+    bands_name_json = base_output_path.joinpath("band_names.json")
+    # Writing JSON data
+    with open(str(bands_name_json), 'w') as f:
+        json.dump(final_band_names, f)
+
+
+    features = features.aggregate_spatial(geometry, reducer="median")
+
+    job_options = {
+        "executor-memory": "3G",  # Increase this value if a job fails due to memory issues
+        "executor-memoryOverhead": "2G",
+        "soft-errors": True
+    }
+
+    return features.create_job(
+        out_format="csv",
+        title=f"GFMAP_Extraction_{geometry.features[0].properties['h3index']}",
+        job_options=job_options,
+    )

@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 
 ######################################################
-root_folder = Path("/mnt/hddarchive.nfs/cop4n2k/CZ0314123/2003/CZ/CZ0314123/NDVI")
+root_folder = Path("/home/eouser/userdoc/src/grasslandwatch/LC_CLASSIFICATION/output/models")
 
 def copy_to_s3(bucket_name, local_path, config_path, s3_path= ""):
     cmd = [
@@ -20,11 +20,11 @@ def copy_to_s3(bucket_name, local_path, config_path, s3_path= ""):
     if result.returncode != 0:
         print(f"Error executing rclone: {result.stderr}")
     else:
-        print("Download completed!")
+        print(f"Upload {local_path} completed!")
 
 # Example usage:
 
-bucket_name = "supportive_data"
+bucket_name = "models"
 
 files_in_folder = os.listdir(root_folder)
 config_path = "/home/eouser/userdoc/rclone.conf"

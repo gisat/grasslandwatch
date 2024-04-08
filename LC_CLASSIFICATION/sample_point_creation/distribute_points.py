@@ -16,7 +16,7 @@ from fiona.crs import from_epsg
 log = logging.getLogger(__name__)
 
 
-TRAINING_POINTS_COUNT = 6000
+TRAINING_POINTS_COUNT = 15000
 TRAINING_POLYGON_BUFFER_M = 10
 TRAINING_MAX_ITERATIONS = 20000
 MINIMUM_CLASS_RATIO = 0.05
@@ -289,16 +289,18 @@ def create_training_point(training_polygons_filepath, training_points_filepath, 
 
     # save the training points to a GeoPackage.
     all_point_samples = []
-    fid = 0
+    id_counter = 0
     for feature in features:
         samples = [{"type": "Feature",
                     "geometry": {"type": "Point",
                                  "coordinates": list(sample_geom.coords)[0]},
-                    "properties": {"id": 0,
-                                   "target": feature["class_id"],
+                    "properties": {"UID": id_counter + sample_index,
+                                   f"{training_column}": feature["class_id"],
                                    "src_id": feature["id"]}}
-                   for sample_geom in feature["sample_geoms"]]
-        all_point_samples.extend(samples)
+                   for sample_index, sample_geom in enumerate(feature["sample_geoms"])]
+        if len(samples) > 0:
+            id_counter = id_counter + len(feature["sample_geoms"])
+            all_point_samples.extend(samples)
 
     # Convert the list of dictionaries to a GeoDataFrame
     gdf = gpd.GeoDataFrame.from_features(all_point_samples)
