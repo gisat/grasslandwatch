@@ -1,2 +1,11 @@
+
+*~
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+
 /LC_CLASSIFICATION/sample_point_creation/
 /LC_CLASSIFICATION/output/

@@ -120,10 +120,11 @@ def aggregate_csv(final_csv_path, base_output_path, timestr, id_column, target_c
                 stats_df = stats_df.drop(columns=['id'])
 
                 # Append to the dataframe
-                df = pd.concat([df, stats_df])
+                df = pd.concat([df, stats_df], ignore_index=True)
             except FileNotFoundError as e:
                 print(f"File not found: {filename}")
                 pass
+
     df.to_csv(final_csv_path)
 
 

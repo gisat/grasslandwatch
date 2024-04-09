@@ -51,44 +51,27 @@ def filter_band_names(band_names):
             filtered_band_list.append(band_name)
     return filtered_band_list
 
+########################################################################################################################
 
-
+## Run these lines to post-process older results
+timestr_list = ["20240406-08h47", "20240408-11h06"]
 UID = "UID"
 target_column = "EUGW_LC"
 base_output_path = Path("/home/eouser/userdoc/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data")
 
+def main():
 
-json_filepath = base_output_path.joinpath("band_names.json")
-with open(str(json_filepath), 'r') as f:
-    final_band_names = json.load(f)
+    for timestr in timestr_list:
+        final_csv_path = base_output_path.joinpath(f"aggregated_{timestr}.csv")
 
-################################################
-band_names = filter_band_names(final_band_names)
-################################################
+        json_filepath = base_output_path.joinpath("band_names.json")
+        with open(str(json_filepath), 'r') as f:
+            final_band_names = json.load(f)
 
-X = df[band_names]
-X = X.astype(np.float32)  # convert to float32 to allow ONNX conversion later on
-y = df[target_column].astype(int)
+        aggregate_csv(final_csv_path, base_output_path, timestr, UID,target_column ,final_band_names)
 
-# Step 1: Find indices of rows with NaN in df1
-nan_indices = X[X.isnull().any(axis=1)].index
-# Step 2: Drop these rows from both DataFrames
-X_cleaned = X.drop(nan_indices)
-y_corresponding = y.drop(nan_indices)
-X_train, X_test, y_train, y_test = train_test_split(X_cleaned, y_corresponding, test_size=0.3, random_state=42)
-unique, counts = np.unique(y_train, return_counts=True)
-print(f"unique {unique}, count {counts}")
 
-rf = RandomForestClassifier(n_estimators=100, max_features=y.unique().size, random_state=42)
-rf = rf.fit(X_train, y_train)
 
-y_pred = rf.predict(X_test)
-print("Accuracy on test set: " + str(accuracy_score(y_test, y_pred))[0:5])
 
-model_output_path = base_output_path / "models"
-model_output_path.mkdir(exist_ok=True)
-
-onnx = to_onnx(model=rf, name="random_forest", X=X_train.values)
-
-with open(base_output_path / "models" / f"random_forest_{timestr}.onnx", "wb") as f:
-    f.write(onnx.SerializeToString())
+if __name__ == "__main__":
+    main()

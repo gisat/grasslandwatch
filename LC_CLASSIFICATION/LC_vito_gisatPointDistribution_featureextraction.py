@@ -39,18 +39,54 @@ class MyLoggerFilter(logging.Filter):
     def filter(self, record):
         return record.name == _log.name
 
+def compile_target_UID_dict(target_to_uid, df, target, UID):
+
+    # Loop through each row and populate the dictionary
+    for index, row in df.iterrows():
+        # Get the EUGW_LC and UID values
+        row_target = row[target]
+        row_uid = row[UID]
+
+        # If the EUGW_LC is not already a key in the dictionary, add it with the UID as the first item in a list
+        if row_target not in target_to_uid:
+            target_to_uid[row_target] = [row_uid]
+        else:
+            # If the EUGW_LC is already a key, append the UID to its list
+            target_to_uid[row_target].append(row_uid)
+
+    return target_to_uid
+
+
 stream_handler.addFilter(MyLoggerFilter())
 
 ########################################################################################################################
 resource_folder = Path("/home/eouser/userdoc/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data/resource")
 year = 2020
 batch_size = 50
+number_sample_eachclass = 150
 sitecode = ["CZ0314123_LC_REF"]
 training_column = "EUGW_LC"
 
 base_output_path = Path("/home/eouser/userdoc/src/grasslandwatch/LC_CLASSIFICATION/sample_point_creation/sample_data")
 base_output_path.mkdir(exist_ok=True)
+########################################################################################################################
+past_runs = ["20240406-08h47", "20240408-11h06"]
+UID = "UID"
 
+uid_list = []
+target_to_uid = {}
+if past_runs is not None:
+    for past_run_item in past_runs:
+        features_filepath = base_output_path.joinpath(f"aggregated_{past_run_item}.csv")
+        feature_csv = pd.read_csv(features_filepath)
+        feature_csv[UID] = feature_csv[UID].astype(int)
+        feature_csv[training_column] = feature_csv[training_column].astype(int)
+
+        nan_indices = feature_csv[feature_csv.isnull().any(axis=1)].index
+        df_cleaned = feature_csv.drop(nan_indices)
+
+        target_to_uid = compile_target_UID_dict(target_to_uid, df_cleaned[[training_column, UID]], training_column, UID)
+        uid_list.extend(feature_csv[UID])
 ########################################################################################################################
 ## Training points ##
 ########################################################################################################################
@@ -65,6 +101,10 @@ training_points_gpkg_filepath = create_points_training_gpkg(input_gpkg, training
 print(f"Done creating {str(training_points_gpkg_filepath)}")
 ########################################################################################################################
 input_gpkg = gpd.read_file(training_points_gpkg_filepath)
+
+if len(uid_list) >0:
+    input_gpkg = input_gpkg.loc[~input_gpkg[UID].isin(uid_list)]
+
 # New DataFrame to store the selected rows
 new_df = pd.DataFrame()
 
@@ -73,7 +113,15 @@ for value in input_gpkg['EUGW_LC'].unique():
     # Filter rows for current unique value
     filtered_rows = input_gpkg[input_gpkg['EUGW_LC'] == value]
     # Randomly sample 20 rows from the filtered rows, or take all if less than 20
-    sampled_rows = filtered_rows.sample(n=min(50, len(filtered_rows)), random_state=1) # random_state for reproducibility
+    if float(value) in target_to_uid.keys():
+        number_of_row_needed = number_sample_eachclass - len(target_to_uid[float(value)])
+    else:
+        number_of_row_needed = number_sample_eachclass
+
+    if number_of_row_needed < 0:
+        number_of_row_needed = 0
+
+    sampled_rows = filtered_rows.sample(n=min(number_of_row_needed, len(filtered_rows)), random_state=1) # random_state for reproducibility
     # Append these rows to the new DataFrame
     new_df = pd.concat([new_df, sampled_rows], ignore_index=True)
 input_df = new_df
