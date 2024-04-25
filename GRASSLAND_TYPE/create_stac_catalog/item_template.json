@@ -1,0 +1,37 @@
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": null,
+  "properties": {
+    "datetime": "2024-03-28T14:22:23.195397Z"
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": null
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": null,
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": null,
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "image": {
+      "href": null,
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        {
+          "name": null
+        }
+      ]
+    }
+  },
+  "bbox": null,
+  "stac_extensions": []
+}

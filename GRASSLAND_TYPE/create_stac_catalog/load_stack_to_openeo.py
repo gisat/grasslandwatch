@@ -12,14 +12,14 @@ except:
 
 # print(connection.job('j-24040400307948e8914727e3b2a7a5c8').logs())
 
-tcd_collection = connection.load_stac(url="https://s3.waw3-1.cloudferro.com/swift/v1/supportive_data/catalog_laea.json",
+tcd_collection = connection.load_stac(url="https://s3.waw3-1.cloudferro.com/swift/v1/supportive_data/catalog_AT3304000_EUDEM.json",
                                       # spatial_extent=spatial_extent,
-                                      bands=["HRL_TCD"],
-                                      temporal_extent=["2024-03-01", "2024-03-31"])
+                                      bands=["TPI"],
+                                      temporal_extent=["2024-03-01", "2024-04-02"])
 
 
 job = tcd_collection.execute_batch(out_format="GTiff")
-job.get_results().download_files("./test.tif")
+job.get_results().download_files("./TPI.tif")
 print(job.logs())
 end = time.time()
 print(end-start)

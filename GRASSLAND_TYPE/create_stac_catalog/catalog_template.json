@@ -1,0 +1,14 @@
+{
+  "type": "Catalog",
+  "id": "catalog",
+  "stac_version": "1.0.0",
+  "description": "EUGW supportive data.",
+  "links": [
+    {
+      "rel": "root",
+      "href": null,
+      "type": "application/json"
+    }
+  ],
+  "stac_extensions": []
+}
